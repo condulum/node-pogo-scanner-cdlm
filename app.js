@@ -26,6 +26,8 @@ for (i in config.workers) {
   alasql('insert into Workers values(?, ?, false, 0)', [config.workers[i].username, config.workers[i].password]);
 }
 
+const spawnType = ['0', '1x15h0', '1x30h0', '1x45h0', '1x60h0', '1x45h2', '1x60h2', '1x60h3', '1x60h23'];
+
 ipc.config.id = 'Controller';
 ipc.config.retry = 3000;
 
@@ -46,9 +48,11 @@ ipc.server.on('WorkerDone', (doneWorker, socket) => {
 });
 
 ipc.server.on('PokemonData', (PokemonData, socket) => {
+  PokemonData.spawn_type_text = spawnType[PokemonData.spawn_type];
   c.query('select * from ScannerData where encounter_id = ?', [PokemonData.encounter_id], (err,rows,fields) => {
     if (rows.length == 0) {
       c.query(`insert into ScannerData values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+//TODO: use spawn_point_id as multi relationship key, and join spawns to reduce PokemonData size.
         PokemonData.id, 
         PokemonData.spawnLat, 
         PokemonData.spawnLong, 
@@ -104,6 +108,10 @@ ipc.server.on('error', (spawn, socket) => {
 });
 */
 
+ipc.server.on('nothing', (spawn, socket) => {
+  schedule.scheduleJob(moment().add(30,'s').toDate(), scan.bind(null, spawn));
+});
+
 ipc.server.start();
 
 function scan(spawn) {
@@ -117,7 +125,7 @@ const c = mysql.createConnection(config.DBConfig);
 
 c.query('select * from Spawns', (err, rows, fields) => {
   let spawns;
-  alasql('create table spawns (lat double,cell string,lng double,sid string,time int unsigned)'); //Create table for spawns.json
+  alasql('create table spawns (lat double,cell string,lng double,sid string,time int unsigned, spawn_type tinyint unsigned)'); //Create table for spawns.json
   alasql.tables.spawns.data = rows;//Put data into alasql table
   spawns = alasql('SELECT * FROM ? ORDER BY time', [rows]); //Order by time
   const total_sec_of_current_hr = moment.duration(moment().minute(), 'm').asSeconds() + moment().seconds() + 28; //get total second of current hour and plus the timeout time of first scan
@@ -135,20 +143,19 @@ function Round1(locations, index, numOfLocs) {
   //location is already a spawn point data 
   const spawn = locations[index];
   spawn.cell = Long.fromString(locations[index].cell, true, 16).toString(10);
-  spawn.scanCase = 0;
 
   const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
-  if (moment().isBefore(spawnTimeOfCurHour)) {
-    schedule.scheduleJob(spawnTimeOfCurHour.toDate(), scan.bind(null, spawn));
-  } else {
-    schedule.scheduleJob(spawnTimeOfCurHour.add(1, 'h').toDate(), scan.bind(null, spawn));
-  }
+
+  const rule = new schedule.RecurrenceRule();
+  rule.minute = moment(spawnTimeOfCurHour).minute();
+  rule.second = moment(spawnTimeOfCurHour).second();
+  schedule.scheduleJob(rule, scan.bind(null, spawn));
 
   setTimeout(() =>{
     scan(spawn); //scan location, with case 0 (Entry point, default at switch)
 
     if (index < numOfLocs) {
-      firstScan(locations, ++index, numOfLocs);
+      Round1(locations, ++index, numOfLocs);
     } else if (index = numOfLocs) {
       index = 0;
     };
