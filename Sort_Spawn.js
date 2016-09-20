@@ -1,7 +1,19 @@
+/*
+variable needed from scanner: spawn_point_id, time, TTH, length of catchable/wild (to check if there's anything.)
+
+spawn_type:
+1: 1x15h0
+2: 1x30h0
+3: 1x45h0
+4: 1x60h0
+5: 1x45h2
+6: 1x60h2
+7: 1x60h3
+8: 1x60h23
+*/
+
 const Long = require('long');
 const moment = require('moment');
-
-//removed: bluebird, lodash
 
 const ipc = require('node-ipc');
 const cp = require('child_process');
@@ -9,12 +21,6 @@ const cp = require('child_process');
 const schedule = require('node-schedule');
 
 const config = require('./config.json');
-
-if (config.telegramAlert) {
-  const Telegram = cp.fork(`${__dirname}/broadcast_services/telegram.js`);
-}
-
-const Web = cp.fork(`${__dirname}/broadcast_services/webserver.js`);
 
 const alasql = require('alasql');
 const mysql = require('mysql');
@@ -26,7 +32,7 @@ for (i in config.workers) {
   alasql('insert into Workers values(?, ?, false, 0)', [config.workers[i].username, config.workers[i].password]);
 }
 
-ipc.config.id = 'Controller';
+ipc.config.id = 'categorize';
 ipc.config.retry = 3000;
 
 ipc.serve();
@@ -45,69 +51,76 @@ ipc.server.on('WorkerDone', (doneWorker, socket) => {
   alasql('update Workers set isWorking = false and worked = worked + 1 where username = ?', [doneWorker.username]);
 });
 
-ipc.server.on('PokemonData', (PokemonData, socket) => {
-  c.query('select * from ScannerData where encounter_id = ?', [PokemonData.encounter_id], (err,rows,fields) => {
-    if (rows.length == 0) {
-      c.query(`insert into ScannerData values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-        PokemonData.id, 
-        PokemonData.spawnLat, 
-        PokemonData.spawnLong, 
-        PokemonData.TTH_ms, 
-        PokemonData.despawnTime, 
-        PokemonData.spawn_point_id, 
-        PokemonData.encounter_id,
-        PokemonData.workerScannedSpawnPointID,
-        PokemonData.serverTimestamp,
-        PokemonData.attack, 
-        PokemonData.defense,
-        PokemonData.stamina,
-        PokemonData.iv,
-        PokemonData.move_1,
-        PokemonData.move_2
-      ]);
-    }
-  });
-  switch(PokemonData.tier) {
-    case 4:
-    case 3:
+ipc.server.on('ScanResult', (spawn, socket) => {
+  const TTH = spawn.TTH_ms //TTH
+  const PokemonLen = spawn.PokemonLen //Check if there is pokemon or not.
+
+  let nextscan;
+  switch (spawn.scanCase) {
+    case 1:
+      if (TTH < 0 || TTH > 3600000) {
+        nextscan = moment().add(15, 'm');
+        spawn.scanCase = 3;
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      } else {
+        nextscan = moment().add(30, 'm')
+        spawn.scanCase = 4;
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      }
+      break;
     case 2:
-      switch(config.telegramAlert) {
-        case true:
-          Telegram.send(PokemonData);
-        default:
-          Web.send(PokemonData);
-          break;
+      if (PokemonLen == 0) {
+        nextscan = moment().add(15, 'm')
+        spawn.scanCase = 5
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      } else if (TTH < 0 || TTH > 3600000) {
+        c.query('update Spawns set spawn_type=6 where sid=?', [spawn.sid]);
+      } else {
+        c.query('update Spawns set spawn_type=5 where sid=?', [spawn.sid]);
+      }
+      break;
+    case 3:
+      if (TTH < 0 || TTH > 3600000) {
+        c.query('update Spawns set spawn_type=4 where sid=?', [spawn.sid]);
+      } else {
+        c.query('update Spawns set spawn_type=3 where sid=?', [spawn.sid]);
+      }
+      break;
+    case 4:
+      if(TTH < 0 || TTH > 3600000) {
+        c.query('update Spawns set spawn_type=7 where sid=?', [spawn.sid]);
+      } else {
+        c.query('update Spawns set spawn_type=2 where sid=?', [spawn.sid]);
+      }
+      break;
+    case 5:
+      if(TTH < 0 || TTH > 3600000) {
+        c.query('update Spawns set spawn_type=8 where sid=?', [spawn.sid]);
+      } else {
+        c.query('update Spawns set spawn_type=1 where sid=?', [spawn.sid]);
       }
       break;
     default:
+      if (PokemonLen == 0) {
+        nextscan = moment().startOf('hour').add(spawn.time, 's');
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      } else if (TTH < 0 || TTH > 3600000) {
+        nextscan = moment().add(15, 'm')
+        spawn.scanCase = 1
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      } else {
+        nextscan = moment().add(30, 'm')
+        spawn.scanCase = 2
+        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+      }
       break;
   }
-});
-
-//If the sort spawn is correct, this part should not be needed.
-/*
-ipc.server.on('nothing', (spawn, socket) => {
-  const spawnTimeOfCurrentHour = moment().startOf('hour').add(spawn.time, 's');
-  if (moment().isBefore(spawnTimeOfCurrentHour)) {
-    schedule.scheduleJob(spawnTimeOfCurrentHour.toDate(), forkWorker.bind(spawn));
-  } else {
-    schedule.scheduleJob(spawnTimeOfCurrentHour.add(1, 'h').toDate(), forkWorker.bind(spawn));
-  }
-});
-
-ipc.server.on('invalidTTH', (spawn, socket) => {
-  schedule.scheduleJob(moment().add(15, 'm').toDate(), forkWorker.bind(null,spawn));
-});
-
-ipc.server.on('error', (spawn, socket) => {
-  schedule.scheduleJob(moment().add(10, 's').toDate(), forkWorker.bind(null,spawn));
-});
-*/
+})
 
 ipc.server.start();
 
 function scan(spawn) {
-  const worker = cp.fork(`./worker_service/worker.js`);
+  const worker = cp.fork(`./worker_service/sort_worker.js`);
   ipc.server.on('SpawnData', (data, socket) => {
     ipc.server.emit(socket, 'SpawnData', spawn);
   });
@@ -128,7 +141,7 @@ c.query('select * from Spawns', (err, rows, fields) => {
   spawns = alasql('SELECT (rnum - 1) % ? + 1 AS gp, * FROM ?', [config.workers.length, spawns]); //calcuate the point will send to which worker
   spawns = alasql('SELECT * FROM ? ORDER BY gp, rnum ', [spawns]); // Order by worker, row
   spawns = alasql('SELECT lat, cell, lng, sid, time FROM ?', [spawns]); // Clean up temp columns
-  Round1(spawns, 0, spawns.length);
+  Round1(spawns, 0, spawns.length)
 });
 
 function Round1(locations, index, numOfLocs) {
@@ -148,7 +161,7 @@ function Round1(locations, index, numOfLocs) {
     scan(spawn); //scan location, with case 0 (Entry point, default at switch)
 
     if (index < numOfLocs) {
-      firstScan(locations, ++index, numOfLocs);
+      Round1(locations, ++index, numOfLocs);
     } else if (index = numOfLocs) {
       index = 0;
     };

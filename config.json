@@ -13,7 +13,7 @@
     {"tier": 4, "chatID": -1001083673897}
   ],
   "DBConfig": {
-    "host":"pogotko.ccsunu7r181j.us-east-1.rds.amazonaws.com", 
+    "host":"pogodb.condulum.xyz", 
     "user":"dupcoderoot", 
     "password":"pythonsucks", 
     "database":"pokemon",
