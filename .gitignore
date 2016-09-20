@@ -1,0 +1,11 @@
+node_modules/
+
+test.json
+
+test.js
+
+workersConfig.json
+
+json/temp.json
+
+log*.txt

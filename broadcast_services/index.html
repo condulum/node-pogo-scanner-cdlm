@@ -1,0 +1,44 @@
+<html>
+  <meta charset="UTF-8">
+  <head>
+    <script src='/socket.io/socket.io.js'></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.14.1/moment.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+  </head>
+  <body>
+    <div class='container'>
+      <table class='u-full-width'>
+        <thead>
+          <tr> <th> ID </th> <th> Pokémon </th> <th> Chinese Name </th> <th> Location </th> <th> Spawn Point ID </th> <th> Despawn Time </th> <th> TTH </th> <th> TTH Formatted </th> <th> Worker </th> <th> Time issued </th> </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    <script>
+      moment.locale('hk'); //change locale of moment to Hong Kong for proper timezone.
+      let socket = io();
+      let element = document.getElementsByTagName('tbody')[0];
+      socket.on('scanner', data => {
+        element.insertAdjacentHTML('afterbegin', `
+        <tr> 
+          <td> ${data.encounter_id} </td> 
+          <td> ${data.PokemonName} </td> 
+          <td> ${data.chineseName} </td> 
+          <td> ${data.spawnLat.toFixed(6)},${data.spawnLong.toFixed(6)} </td> 
+          <td> ${data.spawn_point_id} </td> 
+          <td> ${moment(data.despawnTime).format('HH:mm:ss')} </td>  
+          <td> ${data.TTH_ms} </td> 
+          <td> ${moment(data.TTH_ms).format('mm[m]ss[s]')} </td> 
+          <td> ${data.name} </td> 
+          <td> ${moment(data.timeIssued).format('HH:mm:ss')} </td> 
+        </tr>`);
+      });
+    </script>
+    <style>
+      #a {
+        text-align: center;
+      }
+  </body>
+</html>
