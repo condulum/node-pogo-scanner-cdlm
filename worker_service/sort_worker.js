@@ -13,8 +13,9 @@ const EventEmitter = require('events');
 
 ipc.config.id = 'Sort_Worker';
 ipc.config.retry = 3000;
+ipc.config.silent = true;
 
-ipc.connectTo('categorize');
+ipc.connectTo('Controller');
 
 ipc.of.Controller.on('connect', () => {
   ipc.of.Controller.emit('SpawnData');
@@ -41,7 +42,9 @@ function scanPokemon(spawn, worker) {
   client.playerUpdate(); 
   client.getMapObjects([spawn.sid],[0]).then(cellList => {
     const cell = cellList.map_cells[0];
-    if (cell.catchable_pokemons.length > 0) {
+    console.log(cell.catchable_pokemons);
+    console.log(cell.wild_pokemons);
+    if (cell.catchable_pokemons.length > 0 && cell.wild_pokemons.length > 0) {
       const pokemon_arr = alasql('SELECT * FROM ? wild LEFT JOIN ? catchable ON wild.encounter_id = catchable.encounter_id AND wild.spawn_point_id = catchable.spawn_point_id ORDER BY catchable.expiration_timestamp_ms DESC', [cell.wild_pokemons, cell.catchable_pokemons])
       const spawn_pokemon = pokemon_arr[0];
 
@@ -55,5 +58,6 @@ function scanPokemon(spawn, worker) {
       ipc.of.Controller.emit('PokemonData', spawn);
       ipc.of.Controller.emit('WorkerDone', worker);
     }
+    process.exit(0);
   })
 }

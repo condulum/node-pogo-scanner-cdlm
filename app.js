@@ -157,7 +157,7 @@ function Round1(locations, index, numOfLocs) {
 
     if (index < numOfLocs) {
       Round1(locations, ++index, numOfLocs);
-    } else if (index = numOfLocs) {
+    } else if (index == numOfLocs) {
       index = 0;
     };
   }, 15000);

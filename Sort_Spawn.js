@@ -32,15 +32,20 @@ for (i in config.workers) {
   alasql('insert into Workers values(?, ?, false, 0)', [config.workers[i].username, config.workers[i].password]);
 }
 
-ipc.config.id = 'categorize';
+ipc.config.id = 'Controller';
 ipc.config.retry = 3000;
+ipc.config.silent = true;
 
 ipc.serve();
 
 ipc.server.on('WorkerData', (data, socket) => {
   AvailableWorker = alasql(`select * from Workers where isWorking=false order by rand() limit 1`);
   if (AvailableWorker.length == 0) {
-    ipc.server.emit(socket, 'kill');
+    setTimeout(() => {
+      AvailableWorker = alasql(`select * from Workers where isWorking=false order by rand() limit 1`);
+      ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
+    }, 60000)
+    //ipc.server.emit(socket, 'kill');
   } else {
     ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
     alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
@@ -51,70 +56,78 @@ ipc.server.on('WorkerDone', (doneWorker, socket) => {
   alasql('update Workers set isWorking = false and worked = worked + 1 where username = ?', [doneWorker.username]);
 });
 
-ipc.server.on('ScanResult', (spawn, socket) => {
-  const TTH = spawn.TTH_ms //TTH
-  const PokemonLen = spawn.PokemonLen //Check if there is pokemon or not.
+ipc.server.on('PokemonData', (spawn, socket) => {
+  pool.getConnection((err, c) => {
+    const TTH = spawn.TTH_ms //TTH
+    const PokemonLen = spawn.PokemonLen //Check if there is pokemon or not.
 
-  let nextscan;
-  switch (spawn.scanCase) {
-    case 1:
-      if (TTH < 0 || TTH > 3600000) {
-        nextscan = moment().add(15, 'm');
-        spawn.scanCase = 3;
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      } else {
-        nextscan = moment().add(30, 'm')
-        spawn.scanCase = 4;
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      }
-      break;
-    case 2:
-      if (PokemonLen == 0) {
-        nextscan = moment().add(15, 'm')
-        spawn.scanCase = 5
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      } else if (TTH < 0 || TTH > 3600000) {
-        c.query('update Spawns set spawn_type=6 where sid=?', [spawn.sid]);
-      } else {
-        c.query('update Spawns set spawn_type=5 where sid=?', [spawn.sid]);
-      }
-      break;
-    case 3:
-      if (TTH < 0 || TTH > 3600000) {
-        c.query('update Spawns set spawn_type=4 where sid=?', [spawn.sid]);
-      } else {
-        c.query('update Spawns set spawn_type=3 where sid=?', [spawn.sid]);
-      }
-      break;
-    case 4:
-      if(TTH < 0 || TTH > 3600000) {
-        c.query('update Spawns set spawn_type=7 where sid=?', [spawn.sid]);
-      } else {
-        c.query('update Spawns set spawn_type=2 where sid=?', [spawn.sid]);
-      }
-      break;
-    case 5:
-      if(TTH < 0 || TTH > 3600000) {
-        c.query('update Spawns set spawn_type=8 where sid=?', [spawn.sid]);
-      } else {
-        c.query('update Spawns set spawn_type=1 where sid=?', [spawn.sid]);
-      }
-      break;
-    default:
-      if (PokemonLen == 0) {
-        nextscan = moment().startOf('hour').add(spawn.time, 's');
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      } else if (TTH < 0 || TTH > 3600000) {
-        nextscan = moment().add(15, 'm')
-        spawn.scanCase = 1
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      } else {
-        nextscan = moment().add(30, 'm')
-        spawn.scanCase = 2
-        schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
-      }
-      break;
-  }
+    let nextscan;
+    switch (spawn.scanCase) {
+      case 1:
+        if (TTH < 0 || TTH > 3600000) {
+          nextscan = moment().add(15, 'm');
+          spawn.scanCase = 3;
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn));
+        } else {
+          nextscan = moment().add(30, 'm')
+          spawn.scanCase = 4;
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn));
+        }
+        c.release();
+        break;
+      case 2:
+        if (PokemonLen == 0) {
+          nextscan = moment().add(15, 'm')
+          spawn.scanCase = 5
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+        } else if (TTH < 0 || TTH > 3600000) {
+          c.query('update Spawns set spawn_type=6 where sid=?', [spawn.sid]);
+        } else {
+          c.query('update Spawns set spawn_type=5 where sid=?', [spawn.sid]);
+        }
+        c.release();
+        break;
+      case 3:
+        if (TTH < 0 || TTH > 3600000) {
+          c.query('update Spawns set spawn_type=4 where sid=?', [spawn.sid]);
+        } else {
+          c.query('update Spawns set spawn_type=3 where sid=?', [spawn.sid]);
+        }
+        c.release();
+        break;
+      case 4:
+        if(TTH < 0 || TTH > 3600000) {
+          c.query('update Spawns set spawn_type=7 where sid=?', [spawn.sid]);
+        } else {
+          c.query('update Spawns set spawn_type=2 where sid=?', [spawn.sid]);
+        }
+        c.release();
+        break;
+      case 5:
+        if(TTH < 0 || TTH > 3600000) {
+          c.query('update Spawns set spawn_type=8 where sid=?', [spawn.sid]);
+        } else {
+          c.query('update Spawns set spawn_type=1 where sid=?', [spawn.sid]);
+        }
+        c.release();
+        break;
+      default:
+        if (PokemonLen == 0) {
+          nextscan = moment().startOf('hour').add(spawn.time, 's');
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+        } else if (TTH < 0 || TTH > 3600000) {
+          nextscan = moment().add(15, 'm')
+          spawn.scanCase = 1
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+        } else {
+          nextscan = moment().add(30, 'm')
+          spawn.scanCase = 2
+          schedule.scheduleJob(nextscan.toDate(), scan.bind(null, spawn))
+        }
+        c.release();
+        break;
+    }
+  })
 })
 
 ipc.server.start();
@@ -126,22 +139,14 @@ function scan(spawn) {
   });
 }
 
-const c = mysql.createConnection(config.DBConfig);
 
-c.query('select * from Spawns', (err, rows, fields) => {
-  let spawns;
-  alasql('create table spawns (lat double,cell string,lng double,sid string,time int unsigned)'); //Create table for spawns.json
-  alasql.tables.spawns.data = rows;//Put data into alasql table
-  spawns = alasql('SELECT * FROM ? ORDER BY time', [rows]); //Order by time
-  const total_sec_of_current_hr = moment.duration(moment().minute(), 'm').asSeconds() + moment().seconds() + 28; //get total second of current hour and plus the timeout time of first scan
-  const spawns1 = alasql('SELECT * FROM ? WHERE time >= ?', [spawns, total_sec_of_current_hr]); //get the spawns point with seconds larger than seconds of hour now
-  const spawns2 = alasql('SELECT * FROM ? WHERE time < ?', [spawns, total_sec_of_current_hr]); //get the spawns point with seconds smaller than seconds of hour now
-  spawns = alasql('SELECT * FROM ? UNION ALL CORRESPONDING SELECT * FROM ?', [spawns1, spawns2]); //Union to scan larger first
-  spawns = alasql('SELECT ROWNUM() AS rnum, lat, cell, lng, sid, time FROM ?', [spawns]); //Set row num
-  spawns = alasql('SELECT (rnum - 1) % ? + 1 AS gp, * FROM ?', [config.workers.length, spawns]); //calcuate the point will send to which worker
-  spawns = alasql('SELECT * FROM ? ORDER BY gp, rnum ', [spawns]); // Order by worker, row
-  spawns = alasql('SELECT lat, cell, lng, sid, time FROM ?', [spawns]); // Clean up temp columns
-  Round1(spawns, 0, spawns.length)
+const pool = mysql.createPool(config.DBConfig);
+
+pool.getConnection((err, c) => {
+  c.query('select * from Spawns', (err, rows, fields) => {
+    Round1(rows, 0, rows.length - 1);
+    c.release();
+  });
 });
 
 function Round1(locations, index, numOfLocs) {
@@ -162,9 +167,8 @@ function Round1(locations, index, numOfLocs) {
 
     if (index < numOfLocs) {
       Round1(locations, ++index, numOfLocs);
-    } else if (index = numOfLocs) {
+    } else if (index == numOfLocs) {
       index = 0;
-      c.end();
     };
   }, 15000);
 }

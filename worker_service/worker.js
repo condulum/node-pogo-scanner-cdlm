@@ -50,9 +50,11 @@ function scanPokemon(spawn, worker) {
 
       pokemon_arr.forEach(Pokemon => { //each pokemon scanned
         getPokemonObj(Pokemon, spawn.sid, serverTimeStamp).then(PokemonObj => {
+          /*
           if (PokemonObj.TTH_ms < 0 || PokemonObj.TTH_ms > 3600000) { // check Invalid TTH_ms
             ipc.of.Controller.emit('invalidTTH', spawn);
           } else {
+          */
             if (PokemonObj.checkIV == true) {
               client.encounter(PokemonObj.encounter_id, PokemonObj.spawn_point_id).then(response => {
                 if (response.wild_pokemon.pokemon_data != null) {
@@ -70,15 +72,17 @@ function scanPokemon(spawn, worker) {
               ipc.of.Controller.emit('PokemonData', PokemonData);
               ipc.of.Controller.emit('WorkerDone', worker);
             }
-          }
+          //}
         })
       })
     } else if (cell.catchable_pokemons.length == 0 ) {
       ipc.of.Controller.emit('nothing', spawn);
     }
+    process.exit(0);
   }).catch(error => {
     Work.emit('error', spawn);
     Work.emit('done', worker);
+    process.exit(0);
   });
 }
 
