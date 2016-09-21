@@ -4,6 +4,7 @@ const moment = require('moment');
 //removed: bluebird, lodash
 
 const ipc = require('node-ipc');
+const TelegramIPC = new ipc.IPC;
 const cp = require('child_process');
 
 const schedule = require('node-schedule');
@@ -11,7 +12,7 @@ const schedule = require('node-schedule');
 const config = require('./config.json');
 
 if (config.telegramAlert) {
-  const Telegram = cp.fork(`${__dirname}/broadcast_services/telegram.js`);
+  TelegramIPC.connectToNet('Telegram', config.telegramHost, config.telegramPort);
 }
 
 const Web = cp.fork(`${__dirname}/broadcast_services/webserver.js`);
@@ -77,7 +78,7 @@ ipc.server.on('PokemonData', (PokemonData, socket) => {
     case 2:
       switch(config.telegramAlert) {
         case true:
-          Telegram.send(PokemonData);
+          TelegramIPC.of.Telegram.emit('PokemonData', PokemonData)
         default:
           Web.send(PokemonData);
           break;

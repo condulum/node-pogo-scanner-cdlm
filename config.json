@@ -2,15 +2,17 @@
   "checkIV": true,
   "WebServerPort": 8080,
   "telegramAlert": true,
-  "workers": [
-    {"username": "USERNAME", "password": "PASSWORD"},
-    {"username": "USERNAME2", "password": "PASSWORD2"}
-  ],
+  "telegramHost": "127.0.0.1",
+  "telegramPort": 50000,
   "telegramKey": "242425648:AAHeXild6w4xjj3KRCdaprJ-VrU7pgxZiQA",
   "telegramChannel": [
     {"tier": 2, "chatID": -1001080881265},
     {"tier": 3, "chatID": -1001078487256},
     {"tier": 4, "chatID": -1001083673897}
+  ],
+  "workers": [
+    {"username": "USERNAME", "password": "PASSWORD"},
+    {"username": "USERNAME2", "password": "PASSWORD2"}
   ],
   "DBConfig": {
     "host":"pogodb.condulum.xyz", 

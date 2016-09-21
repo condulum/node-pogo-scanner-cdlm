@@ -24,7 +24,7 @@ const TextOptions = {
 if (telegramAlertOn == true) {
   process.on('message', jsondata => {
     for (i in config.telegramChannel) {
-      if (jsondata.tier == config.telegramChannel.tier) {
+      if (jsondata.tier == config.telegramChannel[i].tier) {
         let chat_id = config.telegramChannel.chatID;
       }
     }
