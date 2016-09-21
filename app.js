@@ -38,8 +38,8 @@ ipc.server.on('WorkerData', (data, socket) => {
   if (AvailableWorker.length == 0) {
     ipc.server.emit(socket, 'kill');
   } else {
-    ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
     alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
+    ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
   }
 });
 
