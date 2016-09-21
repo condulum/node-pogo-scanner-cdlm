@@ -164,6 +164,7 @@ function Round1(locations, index, numOfLocs) {
       Round1(locations, ++index, numOfLocs);
     } else if (index = numOfLocs) {
       index = 0;
+      c.end();
     };
   }, 15000);
 }
