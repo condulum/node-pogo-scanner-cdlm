@@ -77,12 +77,12 @@ function scanPokemon(spawn, worker) {
       })
     } else if (cell.catchable_pokemons.length == 0 ) {
       ipc.of.Controller.emit('nothing', spawn);
+      ipc.of.Controller.emit('WorkerDone', worker);
     }
     process.exit(0);
   }).catch(error => {
-    Work.emit('error', spawn);
-    Work.emit('done', worker);
-    process.exit(0);
+    ipc.of.Controller.emit('WorkerDone', worker);
+    throw(error);
   });
 }
 
@@ -90,30 +90,23 @@ function scanPokemon(spawn, worker) {
 
 function getPokemonObj(Pokemon, workerScannedSpawnPointID, serverTimestamp){ //convert to pokemon object
   return new Promise(function(resolve){
-    let TempPokemon = {};
     let PokemonID;
     if (Pokemon.pokemon_data != null) {
       PokemonID = Pokemon.pokemon_data.pokemon_id; 
     } else {
       PokemonID = Pokemon.pokemon_id
     }
-    getPokemonByID(PokemonID).then(TempPokemon => {
-      resolve({
-        id: TempPokemon.id,
-        PokemonName: TempPokemon.name,
-        chineseName: TempPokemon.chineseName,
-        tier: TempPokemon.tier,
-        checkIV: TempPokemon.checkIV,
-        spawnLat: Pokemon.latitude,
-        spawnLong: Pokemon.longitude,
-        TTH_ms: Pokemon.time_till_hidden_ms, 
-        despawnTime: Pokemon.expiration_timestamp_ms,
-        spawn_point_id: Pokemon.spawn_point_id,
-        encounter_id: Pokemon.encounter_id,
-        workerScannedSpawnPointID: workerScannedSpawnPointID,
-        serverTimestamp: serverTimestamp
-      });
-    })
+    resolve({
+      id: PokemonID,
+      spawnLat: Pokemon.latitude,
+      spawnLong: Pokemon.longitude,
+      TTH_ms: Pokemon.time_till_hidden_ms, 
+      despawnTime: Pokemon.expiration_timestamp_ms,
+      spawn_point_id: Pokemon.spawn_point_id,
+      encounter_id: Pokemon.encounter_id,
+      workerScannedSpawnPointID: workerScannedSpawnPointID,
+      serverTimestamp: serverTimestamp
+    });
   })
 }
 
@@ -125,12 +118,4 @@ function getMoveAndIV (PokemonObj, Pokemon) {
   PokemonObj.move_1 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_1);
   PokemonObj.move_2 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_2);  
   return PokemonObj;
-}
-
-function getPokemonByID(pokemon_id){ //get pokemon data by pokemon_id
-  return new Promise(resolve => {
-    c.query('select * from Pokemons where id=?', [pokemon_id], (err, rows, fields) => {
-      resolve(rows[0])
-    })
-  })
 }
