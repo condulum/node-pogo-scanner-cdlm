@@ -12,23 +12,25 @@ const Trainer = new lib.PTCLogin();
 
 const EventEmitter = require('events');
 
+log(`Start.`)
+
 ipc.config.id = 'Worker';
 ipc.config.retry = 3000;
 
 ipc.connectTo('Controller');
 
 ipc.of.Controller.on('connect', () => {
+  log('Connected to Controller.');
   ipc.of.Controller.emit('SpawnData');
   ipc.of.Controller.emit('WorkerData');
 });
 
-ipc.of.Controller.on('kill', () => {
-  process.exit(0);
-});
-
 ipc.of.Controller.on('SpawnData', spawn => {
+  log(`Received Spawn - ${JSON.stringify(spawn)}`);
   ipc.of.Controller.on('WorkerData', worker => {
+    log(`Received Worker - ${JSON.stringify(worker)}`);
     Trainer.login(worker.username, worker.password).then(token => {
+      log(`Token - ${token}`);
       client.setAuthInfo('ptc', token); //get token
       client.setPosition(spawn.lat, spawn.lng); //set initial location
       return client.init();
@@ -39,48 +41,53 @@ ipc.of.Controller.on('SpawnData', spawn => {
 });
 
 function scanPokemon(spawn, worker) {
+  log(`Start scanning.`)
   client.playerUpdate(); //update worker (character)
 
   client.getMapObjects([spawn.sid], [0]).then(cellList => { //get the objects on the map
     const cell = cellList.map_cells[0]; 
     const serverTimeStamp = cell.current_timestamp_ms;
 
+    log(`Cell - ${JSON.stringify(cell)}`);
+    log(`Catchable: ${cell.catchable_pokemons}, Wild: ${cell.wild_pokemons}`);
+
     if (cell.catchable_pokemons.length > 0 && cell.wild_pokemons.length > 0) {
       const pokemon_arr = alasql('SELECT * FROM ? wild LEFT JOIN ? catchable ON wild.encounter_id = catchable.encounter_id AND wild.spawn_point_id = catchable.spawn_point_id ORDER BY catchable.expiration_timestamp_ms DESC', [cell.wild_pokemons, cell.catchable_pokemons]); //Merge wild and catchable and use ORDER to prevent scheduling scan for lured pokemon
 
       pokemon_arr.forEach(Pokemon => { //each pokemon scanned
-        getPokemonObj(Pokemon, spawn.sid, serverTimeStamp).then(PokemonObj => {
-          /*
-          if (PokemonObj.TTH_ms < 0 || PokemonObj.TTH_ms > 3600000) { // check Invalid TTH_ms
-            ipc.of.Controller.emit('invalidTTH', spawn);
-          } else {
-          */
+        getPokemonObj(Pokemon, spawn.sid, serverTimeStamp)
+          .then(PokemonObj => {
             if (PokemonObj.checkIV == true) {
-              client.encounter(PokemonObj.encounter_id, PokemonObj.spawn_point_id).then(response => {
-                if (response.wild_pokemon.pokemon_data != null) {
-                  Pokemon = response.wild_pokemon.pokemon_data;
-                  PokemonObj = getMoveAndIV(PokemonObj, Pokemon);
-                } else {
-                  throw null;
-                }
-              }).catch(error => {
-                PokemonObj.checkIV = false;
-                ipc.of.Controller.emit('PokemonData', PokemonData);
-                ipc.of.Controller.emit('WorkerDone', worker);
-              });
+              return client.encounter(PokemonObj.encounter_id, PokemonObj.spawn_point_id)
             } else {
-              ipc.of.Controller.emit('PokemonData', PokemonData);
-              ipc.of.Controller.emit('WorkerDone', worker);
+              log(`Thrown.`)
+              throw null;
             }
-          //}
-        })
-      })
+          })
+          .then(response => {
+            if (response.wild_pokemon.pokemon_data != null) {
+              Pokemon = response.wild_pokemon.pokemon_data;
+              PokemonObj = getMoveAndIV(PokemonObj, Pokemon);
+            } else {
+              log(`Thrown.`)
+              throw null;
+            }
+          }).catch(error => {
+            log(`Error from getPokemonObj.\nError Details:\n${error}`);
+            PokemonObj.checkIV = false;
+            ipc.of.Controller.emit('PokemonData', PokemonData);
+            ipc.of.Controller.emit('WorkerDone', worker);
+          });
+      });
+
     } else if (cell.catchable_pokemons.length == 0 ) {
+      log(`Found Nothing.`)
       ipc.of.Controller.emit('nothing', spawn);
       ipc.of.Controller.emit('WorkerDone', worker);
     }
     process.exit(0);
   }).catch(error => {
+    log(`Error from getMapObjects.\nError Details:\n${error}`);
     ipc.of.Controller.emit('WorkerDone', worker);
     throw(error);
   });
@@ -118,4 +125,8 @@ function getMoveAndIV (PokemonObj, Pokemon) {
   PokemonObj.move_1 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_1);
   PokemonObj.move_2 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_2);  
   return PokemonObj;
+}
+
+function log(msg) {
+  console.log(`${moment().format('HHmmss')} - Worker - ${msg}`);
 }

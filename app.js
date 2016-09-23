@@ -3,6 +3,8 @@ const moment = require('moment');
 
 //removed: bluebird, lodash
 
+//IMPORTANT: GET A PROPER LOGGER.
+
 const ipc = require('node-ipc');
 const cp = require('child_process');
 
@@ -34,11 +36,12 @@ ipc.server.on('WorkerData', (data, socket) => {
     AvailableWorker = alasql(`select * from Workers where isWorking=false order by rand() limit 1`);
 
     if (AvailableWorker.length != 0) {
+      log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`)
       ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
       alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
       clearInterval(getWorker);
     }
-  })
+  },20000)
 });
 
 ipc.server.on('WorkerDone', (doneWorker, socket) => {
@@ -46,6 +49,7 @@ ipc.server.on('WorkerDone', (doneWorker, socket) => {
 });
 
 ipc.server.on('PokemonData', (PokemonData, socket) => {
+  log(JSON.stringify(PokemonData));
   pool.getConnection((err, c) => {
     c.query('select * from Encountered where encounter_id = ?', [PokemonData.encounter_id], (err,rows,fields) => {
       if (rows.length == 0) {
@@ -95,12 +99,14 @@ ipc.server.on('error', (spawn, socket) => {
 */
 
 ipc.server.on('nothing', (spawn, socket) => {
+  log(`Found Nothing, rescheduling (30s).`);
   schedule.scheduleJob(moment().add(30,'s').toDate(), scan.bind(null, spawn));
 });
 
 ipc.server.start();
 
 function scan(spawn) {
+  log(`Forking.`)
   const worker = cp.fork(`./worker_service/worker.js`);
   ipc.server.on('SpawnData', (data, socket) => {
     ipc.server.emit(socket, 'SpawnData', spawn);
@@ -109,6 +115,7 @@ function scan(spawn) {
 
 pool.getConnection((err, c) => {
   c.query('select * from Spawns', (err, rows, fields) => {
+    log('Getting Spawn points from MySQL.')
     c.release();
     let spawns;
     alasql('create table spawns (lat double,cell string,lng double,sid string,time int unsigned, spawn_type tinyint unsigned)'); //Create table for spawns.json
@@ -126,8 +133,9 @@ pool.getConnection((err, c) => {
 });
 
 function initialScheduler(spawns) {
+  log('Scheduling.')
   spawns.forEach(spawn => {
-    spawn.cell = Long.fromString(locations[index].cell, true, 16).toString(10);
+    spawn.cell = Long.fromString(spawn.cell, true, 16).toString(10);
 
     const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
     const rule = new schedule.RecurrenceRule();
@@ -135,4 +143,8 @@ function initialScheduler(spawns) {
     rule.second = moment(spawnTimeOfCurHour).second();
     schedule.scheduleJob(rule, scan.bind(null, spawn));
   })
+}
+
+function log(msg) {
+  console.log(`${moment().format('HHmmss')} - ${msg}`);
 }
