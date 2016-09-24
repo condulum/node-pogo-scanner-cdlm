@@ -1,6 +1,8 @@
 const Long = require('long');
 const moment = require('moment');
 
+moment.locale('hk');
+
 const ipc = require('node-ipc');
 const cp = require('child_process');
 
@@ -140,17 +142,17 @@ ipc.server.on('PokemonData', (spawn, socket) => {
 ipc.server.start();
 
 function scan(spawn) {
-  log('Forking.')
-  const fork = cp.fork(`./worker_service/sort_worker.js`);
   const interval = setInterval(() => {
-    let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)
-
-    if (AvailableWorker.length > 0 && AvailableWorker.token !== null) {
-      fork.send({spawn:spawn, worker:AvailableWorker[0]})
-      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker[0].username]);
+    let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)[0]
+    log(JSON.stringify(AvailableWorker));
+    if (AvailableWorker != null && AvailableWorker.token != null) {
+      log('Forking.')
+      const fork = cp.fork(`./worker_service/sort_worker.js`);
+      fork.send({spawn:spawn, worker:AvailableWorker})
+      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
       clearInterval(interval);
     }
-  },5000)
+  },3000)
 }
 
 pool.getConnection((err, c) => {
@@ -168,7 +170,8 @@ function Round1(spawns) {
     spawn.scanCase = 0;
 
     const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
-    if (moment().isBefore(spawnTimeOfCurHour)) {
+
+    if (moment().isBefore(spawnTimeOfCurHour) == true) {
       schedule.scheduleJob(spawnTimeOfCurHour.toDate(), scan.bind(null, spawn));
     } else {
       schedule.scheduleJob(spawnTimeOfCurHour.add(1, 'h').toDate(), scan.bind(null, spawn));
