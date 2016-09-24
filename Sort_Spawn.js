@@ -25,7 +25,7 @@ const config = require('./config.json');
 const alasql = require('alasql');
 const mysql = require('mysql');
 
-alasql('create table Workers(username varchar(32), password varchar(32), isWorking boolean, worked int unsigned)');
+alasql('create table Workers(username varchar(32), password varchar(32), isWorking boolean, worked int unsigned, token varchar(64))');
 alasql.fn.rand = () => Math.random();
 
 for (i in config.workers) {
@@ -36,19 +36,27 @@ ipc.config.id = 'Controller';
 ipc.config.retry = 3000;
 ipc.config.silent = true;
 
+setInterval(() => {
+  alasql.promise('select * from Workers').each(worker => {
+    Trainer.login(worker.username, worker.password).then(token => {
+      alasql('update Workers set token = ? where username = ?', [token, worker.username])
+    });
+  });
+}, 300000)
+
 ipc.serve();
 
-ipc.server.on('WorkerData', (data, socket) => {
+ipc.server.on('Token', (data, socket) => {
   const getWorker = setInterval(() => {
-    AvailableWorker = alasql(`select * from Workers where isWorking=false order by rand() limit 1`);
+    AvailableWorker = alasql(`select token, username from Workers where isWorking is false and token is not null order by rand() limit 1`);
 
     if (AvailableWorker.length != 0) {
-      log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`)
-      ipc.server.emit(socket, 'WorkerData', AvailableWorker[0]);
+      log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`);
+      ipc.server.emit(socket, 'Token', AvailableWorker[0].token);
       alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
       clearInterval(getWorker);
     }
-  }, 20000)
+  },20000)
 });
 
 ipc.server.on('WorkerDone', (doneWorker, socket) => {
