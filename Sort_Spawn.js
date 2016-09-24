@@ -25,46 +25,49 @@ const config = require('./config.json');
 const alasql = require('alasql');
 const mysql = require('mysql');
 
+const lib = require('pogobuf');
+let Trainer = new lib.PTCLogin();
+
 alasql('create table Workers(username varchar(32), password varchar(32), isWorking boolean, worked int unsigned, token varchar(64))');
 alasql.fn.rand = () => Math.random();
 
 for (i in config.workers) {
-  alasql('insert into Workers values(?, ?, false, 0)', [config.workers[i].username, config.workers[i].password]);
+  alasql('insert into Workers values(?, ?, false, 0, null)', [config.workers[i].username, config.workers[i].password]);
 }
 
 ipc.config.id = 'Controller';
 ipc.config.retry = 3000;
 ipc.config.silent = true;
 
+function refreshToken() {
+  log('Refreshing Token.')
+  alasql.promise('select * from Workers').then(workers => {
+    for (i in workers) {
+      let worker = workers[i];
+      Trainer = null;
+      Trainer = new lib.PTCLogin();
+      Trainer.login(worker.username, worker.password).then(token => {
+        alasql('update Workers set token = ? where username = ?', [token, worker.username])
+      }).catch(error => {console.log(error)});
+    }
+  }).catch(error => {
+    console.log(error);
+  })
+}
+
+refreshToken();
+
 setInterval(() => {
-  alasql.promise('select * from Workers').each(worker => {
-    Trainer.login(worker.username, worker.password).then(token => {
-      alasql('update Workers set token = ? where username = ?', [token, worker.username])
-    });
-  });
+  refreshToken();
 }, 300000)
 
 ipc.serve();
-
-ipc.server.on('Token', (data, socket) => {
-  const getWorker = setInterval(() => {
-    AvailableWorker = alasql(`select token, username from Workers where isWorking is false and token is not null order by rand() limit 1`);
-
-    if (AvailableWorker.length != 0) {
-      log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`);
-      ipc.server.emit(socket, 'Token', AvailableWorker[0].token);
-      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
-      clearInterval(getWorker);
-    }
-  },20000)
-});
 
 ipc.server.on('WorkerDone', (doneWorker, socket) => {
   alasql('update Workers set isWorking = false and worked = worked + 1 where username = ?', [doneWorker.username]);
 });
 
 ipc.server.on('PokemonData', (spawn, socket) => {
-  log(JSON.stringify(spawn));
   pool.getConnection((err, c) => {
     const TTH = spawn.TTH_ms //TTH
     const PokemonLen = spawn.PokemonLen //Check if there is pokemon or not.
@@ -149,11 +152,11 @@ ipc.server.on('PokemonData', (spawn, socket) => {
 
 ipc.server.start();
 
-function scan(callback) {
+function scan(spawn, worker) {
   log('Forking.')
-  const worker = cp.fork(`./worker_service/sort_worker.js`);
+  const fork = cp.fork(`./worker_service/sort_worker.js`);
+  fork.send({spawn: spawn, worker: worker});
 }
-
 
 const pool = mysql.createPool(config.DBConfig);
 
@@ -179,11 +182,16 @@ function Round1(spawns, index, numOfLocs) {
   }
 
   setTimeout(() =>{
-    scan(() => {
-      ipc.server.on('SpawnData', (data, socket) => {
-        ipc.server.emit(socket, 'SpawnData', spawn);
-      });
-    }); //scan location, with case 0 (Entry point, default at switch)
+    const getWorker = setInterval(() => {
+      AvailableWorker = alasql(`select token, username from Workers where isWorking is false and token is not null order by rand() limit 1`);
+
+      if (AvailableWorker.length != 0) {
+        log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`);
+        scan(spawn, AvailableWorker[0]);
+        alasql('update Workers set isWorking = true where username = ?', [AvailableWorker[0].username]);
+        clearInterval(getWorker);
+      }
+    },10000)
 
     if (index < numOfLocs) {
       Round1(spawns, ++index, numOfLocs);
@@ -194,5 +202,5 @@ function Round1(spawns, index, numOfLocs) {
 }
 
 function log(msg) {
-  console.log(`${moment().format('HHmmss')} - ${msg}`);
+  console.log(`${moment().format('HHmmss')} - Controller - ${msg}`);
 }

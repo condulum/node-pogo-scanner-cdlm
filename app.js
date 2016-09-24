@@ -23,7 +23,7 @@ alasql('create table Workers(username varchar(32), password varchar(32), isWorki
 alasql.fn.rand = () => Math.random();
 
 for (i in config.workers) {
-  alasql('insert into Workers values(?, ?, false, 0)', [config.workers[i].username, config.workers[i].password]);
+  alasql('insert into Workers values(?, ?, false, 0, null)', [config.workers[i].username, config.workers[i].password]);
 }
 //const spawnType = ['0', '1x15h0', '1x30h0', '1x45h0', '1x60h0', '1x45h2', '1x60h2', '1x60h3', '1x60h23'];
 ipc.config.id = 'Controller';
