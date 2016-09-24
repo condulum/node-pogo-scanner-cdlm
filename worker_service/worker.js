@@ -22,21 +22,18 @@ ipc.connectTo('Controller');
 ipc.of.Controller.on('connect', () => {
   log('Connected to Controller.');
   ipc.of.Controller.emit('SpawnData');
-  ipc.of.Controller.emit('WorkerData');
+  ipc.of.Controller.emit('Token');
 });
 
 ipc.of.Controller.on('SpawnData', spawn => {
   log(`Received Spawn - ${JSON.stringify(spawn)}`);
-  ipc.of.Controller.on('WorkerData', worker => {
+  ipc.of.Controller.on('Token', worker => {
     log(`Received Worker - ${JSON.stringify(worker)}`);
-    Trainer.login(worker.username, worker.password).then(token => {
-      log(`Token - ${token}`);
-      client.setAuthInfo('ptc', token); //get token
-      client.setPosition(spawn.lat, spawn.lng); //set initial location
-      return client.init();
-    }).then(() => {
+    client.setAuthInfo('ptc', worker.token); //get token
+    client.setPosition(spawn.lat, spawn.lng); //set initial location
+    client.init().then(() => {
       scanPokemon(spawn, worker);
-    })
+    });
   });
 });
 
