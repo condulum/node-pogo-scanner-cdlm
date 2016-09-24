@@ -149,12 +149,9 @@ ipc.server.on('PokemonData', (spawn, socket) => {
 
 ipc.server.start();
 
-function scan(spawn) {
+function scan(callback) {
   log('Forking.')
   const worker = cp.fork(`./worker_service/sort_worker.js`);
-  ipc.server.on('SpawnData', (data, socket) => {
-    ipc.server.emit(socket, 'SpawnData', spawn);
-  });
 }
 
 
@@ -182,7 +179,11 @@ function Round1(spawns, index, numOfLocs) {
   }
 
   setTimeout(() =>{
-    scan(spawn); //scan location, with case 0 (Entry point, default at switch)
+    scan(() => {
+      ipc.server.on('SpawnData', (data, socket) => {
+        ipc.server.emit(socket, 'SpawnData', spawn);
+      });
+    }); //scan location, with case 0 (Entry point, default at switch)
 
     if (index < numOfLocs) {
       Round1(spawns, ++index, numOfLocs);
