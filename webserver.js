@@ -4,7 +4,7 @@ const http = require('http');
 const socketio = require('socket.io'); //socket to send data to webpage
 const EventEmitter = require('events');
 
-const config = require(`${__dirname}/../config.json`);
+const config = require(`${__dirname}/config.json`);
 
 const ioEvent = new EventEmitter(); //create new EventEmitter
 

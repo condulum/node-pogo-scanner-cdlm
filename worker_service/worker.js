@@ -16,25 +16,19 @@ log(`Start.`)
 
 ipc.config.id = 'Worker';
 ipc.config.retry = 3000;
+ipc.config.silent = true;
 
 ipc.connectTo('Controller');
 
-ipc.of.Controller.on('connect', () => {
-  log('Connected to Controller.');
-  ipc.of.Controller.emit('SpawnData');
-  ipc.of.Controller.emit('Token');
-});
-
-ipc.of.Controller.on('SpawnData', spawn => {
-  log(`Received Spawn - ${JSON.stringify(spawn)}`);
-  ipc.of.Controller.on('Token', worker => {
-    log(`Received Worker - ${JSON.stringify(worker)}`);
-    client.setAuthInfo('ptc', worker.token); //get token
-    client.setPosition(spawn.lat, spawn.lng); //set initial location
-    client.init().then(() => {
-      scanPokemon(spawn, worker);
-    });
-  });
+process.on('message', data => {
+  let spawn = data.spawn;
+  let worker = data.worker;
+  log(`Received: ${JSON.stringify(data)}`);
+  client.setAuthInfo('ptc', worker.token); //get token
+  client.setPosition(spawn.lat, spawn.lng); //set initial location
+  client.init().then(() => {
+    scanPokemon(spawn, worker);
+  }).error(err => {console.log(err)});
 });
 
 function scanPokemon(spawn, worker) {

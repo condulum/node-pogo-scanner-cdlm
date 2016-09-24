@@ -1,17 +1,3 @@
-/*
-variable needed from scanner: spawn_point_id, time, TTH, length of catchable/wild (to check if there's anything.)
-
-spawn_type:
-1: 1x15h0
-2: 1x30h0
-3: 1x45h0
-4: 1x60h0
-5: 1x45h2
-6: 1x60h2
-7: 1x60h3
-8: 1x60h23
-*/
-
 const Long = require('long');
 const moment = require('moment');
 
@@ -28,40 +14,41 @@ const mysql = require('mysql');
 const lib = require('pogobuf');
 let Trainer = new lib.PTCLogin();
 
+const pool = mysql.createPool(config.DBConfig);
+
 alasql('create table Workers(username varchar(32), password varchar(32), isWorking boolean, worked int unsigned, token varchar(64))');
 alasql.fn.rand = () => Math.random();
 
-for (i in config.workers) {
-  alasql('insert into Workers values(?, ?, false, 0, null)', [config.workers[i].username, config.workers[i].password]);
-}
+config.workers.forEach(worker => {
+  alasql('insert into Workers values(?, ?, false, 0, null)', [worker.username, worker.password]);
+});
 
 ipc.config.id = 'Controller';
 ipc.config.retry = 3000;
 ipc.config.silent = true;
 
+ipc.serve();
+
 function refreshToken() {
-  log('Refreshing Token.')
+  log('Refreshing Token.');
   alasql.promise('select * from Workers').then(workers => {
-    for (i in workers) {
-      let worker = workers[i];
+    workers.forEach(worker => {
       Trainer = null;
       Trainer = new lib.PTCLogin();
       Trainer.login(worker.username, worker.password).then(token => {
-        alasql('update Workers set token = ? where username = ?', [token, worker.username])
-      }).catch(error => {console.log(error)});
-    }
+        alasql('update Workers set token = ? where username = ?', [token, worker.username]);
+      });
+    });
   }).catch(error => {
     console.log(error);
-  })
+  });
 }
 
 refreshToken();
 
 setInterval(() => {
   refreshToken();
-}, 300000)
-
-ipc.serve();
+}, 300000);
 
 ipc.server.on('WorkerDone', (doneWorker, socket) => {
   alasql('update Workers set isWorking = false and worked = worked + 1 where username = ?', [doneWorker.username]);
@@ -152,53 +139,41 @@ ipc.server.on('PokemonData', (spawn, socket) => {
 
 ipc.server.start();
 
-function scan(spawn, worker) {
+function scan(spawn) {
   log('Forking.')
   const fork = cp.fork(`./worker_service/sort_worker.js`);
-  fork.send({spawn: spawn, worker: worker});
-}
+  const interval = setInterval(() => {
+    let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)
 
-const pool = mysql.createPool(config.DBConfig);
+    if (AvailableWorker.length > 0 && AvailableWorker.token !== null) {
+      fork.send({spawn:spawn, worker:AvailableWorker[0]})
+      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker[0].username]);
+      clearInterval(interval);
+    }
+  },5000)
+}
 
 pool.getConnection((err, c) => {
   c.query('select * from Spawns', (err, rows, fields) => {
     log('Getting Spawn from SQL.')
-    Round1(rows, 0, rows.length - 1);
+    Round1(rows);
     c.release();
   });
 });
 
-function Round1(spawns, index, numOfLocs) {
+function Round1(spawns) {
   //location is already a spawn point data 
-  const spawn = spawns[index];
-  spawn.cell = Long.fromString(spawn.cell, true, 16).toString(10);
-  spawn.scanCase = 0;
+  spawns.forEach(spawn => {
+    spawn.cell = Long.fromString(spawn.cell, true, 16).toString(10);
+    spawn.scanCase = 0;
 
-  const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
-  if (moment().isBefore(spawnTimeOfCurHour)) {
-    schedule.scheduleJob(spawnTimeOfCurHour.toDate(), scan.bind(null, spawn));
-  } else {
-    schedule.scheduleJob(spawnTimeOfCurHour.add(1, 'h').toDate(), scan.bind(null, spawn));
-  }
-
-  setTimeout(() =>{
-    const getWorker = setInterval(() => {
-      AvailableWorker = alasql(`select token, username from Workers where isWorking is false and token is not null order by rand() limit 1`);
-
-      if (AvailableWorker.length != 0) {
-        log(`Assigning worker: \n${JSON.stringify(AvailableWorker[0])}\n`);
-        scan(spawn, AvailableWorker[0]);
-        alasql('update Workers set isWorking = true where username = ?', [AvailableWorker[0].username]);
-        clearInterval(getWorker);
-      }
-    },10000)
-
-    if (index < numOfLocs) {
-      Round1(spawns, ++index, numOfLocs);
-    } else if (index == numOfLocs) {
-      index = 0;
-    };
-  }, 15000);
+    const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
+    if (moment().isBefore(spawnTimeOfCurHour)) {
+      schedule.scheduleJob(spawnTimeOfCurHour.toDate(), scan.bind(null, spawn));
+    } else {
+      schedule.scheduleJob(spawnTimeOfCurHour.add(1, 'h').toDate(), scan.bind(null, spawn));
+    }
+  })
 }
 
 function log(msg) {
