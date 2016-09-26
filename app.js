@@ -1,6 +1,8 @@
 const Long = require('long');
 const moment = require('moment');
 
+moment.locale('hk');
+
 //removed: bluebird, lodash
 
 //IMPORTANT: GET A PROPER LOGGER.
@@ -44,6 +46,7 @@ function refreshToken() {
       Trainer = null;
       Trainer = new lib.PTCLogin();
       Trainer.login(worker.username, worker.password).then(token => {
+        log(`${worker.username} - ${token}`)
         alasql('update Workers set token = ? where username = ?', [token, worker.username]);
       });
     });
@@ -76,16 +79,18 @@ ipc.server.on('PokemonData', (PokemonData, socket) => {
           PokemonData.encounter_id,
           PokemonData.workerScannedSpawnPointID,
           PokemonData.serverTimestamp,
-          PokemonData.attack, 
-          PokemonData.defense,
-          PokemonData.stamina,
-          PokemonData.iv,
+          PokemonData.Atk, 
+          PokemonData.Def,
+          PokemonData.Stam,
+          PokemonData.IV,
           PokemonData.move_1,
           PokemonData.move_2
-        ]);
-        c.query('insert into Encountered values (?, ?, ?)', [PokemonData.encounter_id, PokemonData.despawnTime, moment().valueOf()]); //inserts into Encountered with id, despawn time and scanner time
+        ], (err, rows, fields) => {
+          c.query('insert into Encountered values (?, ?, ?, false)', [PokemonData.encounter_id, PokemonData.despawnTime, moment().valueOf()], (err, rows, fields) => {
+            c.release();
+          }); //inserts into Encountered with id, despawn time and scanner time
+        });
       }
-      c.release();
     });
   })
   //Web.send(PokemonData);
@@ -119,23 +124,25 @@ ipc.server.on('nothing', (spawn, socket) => {
 ipc.server.start();
 
 function scan(spawn) {
-  log('Forking.')
-  const fork = cp.fork(`./worker_service/sort_worker.js`);
   const interval = setInterval(() => {
-    let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)
-
-    if (AvailableWorker.length > 0 && AvailableWorker.token !== null) {
-      fork.send({spawn:spawn, worker:AvailableWorker[0]})
-      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker[0].username]);
+    let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)[0]
+    if (AvailableWorker != null && AvailableWorker.token != null) {
+      log('Forking.')
+      const fork = cp.fork(`./worker_service/worker.js`);
+      fork.send({spawn:spawn, worker:AvailableWorker})
+      alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
       clearInterval(interval);
+    } else {
+      log('No Worker Available');
     }
-  },5000)
+  },500)
 }
 
 pool.getConnection((err, c) => {
   c.query('select * from Spawns', (err, rows, fields) => {
+    if (err) throw(err);
     log('Getting Spawn points from MySQL.')
-    c.release();
+    c.destroy();
     let spawns;
     alasql('create table spawns (lat double,cell string,lng double,sid string,time int unsigned, spawn_type tinyint unsigned)'); //Create table for spawns.json
     alasql.tables.spawns.data = rows;//Put data into alasql table
@@ -156,7 +163,7 @@ function initialScheduler(spawns) {
   spawns.forEach(spawn => {
     spawn.cell = Long.fromString(spawn.cell, true, 16).toString(10);
 
-    const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
+    const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's').add(10, 's');
     const rule = new schedule.RecurrenceRule();
     rule.minute = moment(spawnTimeOfCurHour).minute();
     rule.second = moment(spawnTimeOfCurHour).second();

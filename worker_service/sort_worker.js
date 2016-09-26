@@ -9,20 +9,14 @@ const proto = require('node-pogo-protos')
 
 const client = new lib.Client();
 
-const EventEmitter = require('events');
-
-function randomString(length, chars) {
-  var mask = '';
-  if (chars.indexOf('a') > -1) mask += 'abcdefghijklmnopqrstuvwxyz';
-  if (chars.indexOf('A') > -1) mask += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  if (chars.indexOf('#') > -1) mask += '0123456789';
-  if (chars.indexOf('!') > -1) mask += '~`!@#$%^&*()_+-={}[]:";\'<>?,./|\\';
-  var result = '';
-  for (var i = length; i > 0; --i) result += mask[Math.round(Math.random() * (mask.length - 1))];
+function randomString(length) {
+  let mask = '0123456789';
+  let result = '';
+  for (let i = length; i > 0; --i) result += mask[Math.round(Math.random() * (mask.length - 1))];
   return result;
 }
 
-const workerName = randomString(6, '#');
+const workerName = randomString(6);
 
 ipc.config.id = 'Sort_Worker';
 ipc.config.retry = 3000;
@@ -33,7 +27,6 @@ ipc.connectTo('Controller');
 process.on('message', data => {
   let spawn = data.spawn;
   let worker = data.worker;
-  log(`Received: ${JSON.stringify(data)}`);
   client.setAuthInfo('ptc', worker.token); //get token
   client.setPosition(spawn.lat, spawn.lng); //set initial location
   client.init().then(() => {

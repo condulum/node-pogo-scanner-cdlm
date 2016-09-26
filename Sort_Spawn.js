@@ -53,6 +53,7 @@ setInterval(() => {
 }, 300000);
 
 ipc.server.on('WorkerDone', (doneWorker, socket) => {
+  log('WorkerDone');
   alasql('update Workers set isWorking = false and worked = worked + 1 where username = ?', [doneWorker.username]);
 });
 
@@ -144,7 +145,6 @@ ipc.server.start();
 function scan(spawn) {
   const interval = setInterval(() => {
     let AvailableWorker = alasql(`select * from Workers where isWorking = false order by rand() limit 1`)[0]
-    log(JSON.stringify(AvailableWorker));
     if (AvailableWorker != null && AvailableWorker.token != null) {
       log('Forking.')
       const fork = cp.fork(`./worker_service/sort_worker.js`);
@@ -152,7 +152,7 @@ function scan(spawn) {
       alasql('update Workers set isWorking = true where username = ?', [AvailableWorker.username]);
       clearInterval(interval);
     }
-  },3000)
+  },500)
 }
 
 pool.getConnection((err, c) => {
@@ -169,7 +169,7 @@ function Round1(spawns) {
     spawn.cell = Long.fromString(spawn.cell, true, 16).toString(10);
     spawn.scanCase = 0;
 
-    const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's');
+    const spawnTimeOfCurHour = moment().startOf('hour').add(spawn.time, 's').add(10, 's');
 
     if (moment().isBefore(spawnTimeOfCurHour) == true) {
       schedule.scheduleJob(spawnTimeOfCurHour.toDate(), scan.bind(null, spawn));
