@@ -7,6 +7,12 @@ moment.locale('hk');
 
 //IMPORTANT: GET A PROPER LOGGER.
 
+const request = require('then-request');
+const protobuf = require('protobuf');
+
+const protocol = protobuf.loadProtoFile('./Protocol/DBMessage.proto');
+const Message = protocol.build();
+
 const ipc = require('node-ipc');
 const cp = require('child_process');
 
@@ -17,7 +23,6 @@ const config = require('./config.json');
 //const Web = cp.fork(`${__dirname}/webserver.js`);
 
 const alasql = require('alasql');
-const mysql = require('mysql');
 
 const lib = require('pogobuf');
 let Trainer = new lib.PTCLogin();
@@ -66,33 +71,57 @@ ipc.server.on('WorkerDone', (doneWorker, socket) => {
 });
 
 ipc.server.on('PokemonData', (PokemonData, socket) => {
-  pool.getConnection((err, c) => {
-    c.query('select * from Encountered where encounter_id = ?', [PokemonData.encounter_id], (err,rows,fields) => {
-      if (rows.length == 0) {
-        c.query(`insert into ScannerData values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-          PokemonData.id, 
-          PokemonData.spawnLat, 
-          PokemonData.spawnLong, 
-          PokemonData.TTH_ms, 
-          PokemonData.despawnTime, 
-          PokemonData.spawn_point_id, 
-          PokemonData.encounter_id,
-          PokemonData.workerScannedSpawnPointID,
-          PokemonData.serverTimestamp,
-          PokemonData.Atk, 
-          PokemonData.Def,
-          PokemonData.Stam,
-          PokemonData.IV,
-          PokemonData.move_1,
-          PokemonData.move_2
-        ], (err, rows, fields) => {
-          c.query('insert into Encountered values (?, ?, ?, false)', [PokemonData.encounter_id, PokemonData.despawnTime, moment().valueOf()], (err, rows, fields) => {
-            c.release();
-          }); //inserts into Encountered with id, despawn time and scanner time
-        });
-      }
-    });
+  let PokemonDatumMessage = new Message.PokemonDatum({
+    pokemon_id: PokemonData.id,
+    encounter_id: PokemonData.encounter_id,
+    latitude: PokemonData.spawnLat,
+    longitude: PokemonData.spawnLong,
+    expiration_timestamp_ms: PokemonData.despawnTime,
+    spawn_point_id: PokemonData.spawn_point_id,
+    time_till_hidden_ms: PokemonData.TTH_ms,
+    move_1: PokemonData.move_1,
+    move_2: PokemonData.move_2,
+    attack: PokemonData.Atk,
+    defense: PokemonData.Def,
+    stamina: PokemonData.Stam,
+    client_id: "",
+    datum_id: null
   })
+
+  let PokemonDataMessage = new Message.PokemonData([PokemonDatumMessage.toBuffer()]);
+
+  request('POST', api_url ,{body: PokemonDataMessage.toBuffer()})
+    .done(res => {
+      console.info('Posting to Database success.')
+    })
+
+  // pool.getConnection((err, c) => {
+  //   c.query('select * from Encountered where encounter_id = ?', [PokemonData.encounter_id], (err,rows,fields) => {
+  //     if (rows.length == 0) {
+  //       c.query(`insert into ScannerData values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+  //         PokemonData.id,
+  //         PokemonData.spawnLat,
+  //         PokemonData.spawnLong,
+  //         PokemonData.TTH_ms,
+  //         PokemonData.despawnTime,
+  //         PokemonData.spawn_point_id,
+  //         PokemonData.encounter_id,
+  //         PokemonData.workerScannedSpawnPointID,
+  //         PokemonData.serverTimestamp,
+  //         PokemonData.Atk,
+  //         PokemonData.Def,
+  //         PokemonData.Stam,
+  //         PokemonData.IV,
+  //         PokemonData.move_1,
+  //         PokemonData.move_2
+  //       ], (err, rows, fields) => {
+  //         c.query('insert into Encountered values (?, ?, ?, false)', [PokemonData.encounter_id, PokemonData.despawnTime, moment().valueOf()], (err, rows, fields) => {
+  //           c.release();
+  //         }); //inserts into Encountered with id, despawn time and scanner time
+  //       });
+  //     }
+  //   });
+  // })
   //Web.send(PokemonData);
 });
 

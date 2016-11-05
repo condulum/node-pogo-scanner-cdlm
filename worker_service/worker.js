@@ -39,7 +39,7 @@ function scanPokemon(spawn, worker) {
   client.playerUpdate(); //update worker (character)
 
   client.getMapObjects([spawn.cell],[0]).then(cellList => { //get the objects on the map
-    const cell = cellList.map_cells[0]; 
+    const cell = cellList.map_cells[0];
     const serverTimeStamp = cell.current_timestamp_ms;
 
     log(`Cell - ${cell.s2_cell_id} - Catchable: ${cell.catchable_pokemons.length}, Wild: ${cell.wild_pokemons.length}`);
@@ -53,7 +53,7 @@ function scanPokemon(spawn, worker) {
             client.encounter(PokemonObj.encounter_id, PokemonObj.spawn_point_id).then(response => {
               if (response.wild_pokemon.pokemon_data != null) {
                 Pokemon = response.wild_pokemon.pokemon_data;
-                PokemonObj = getMoveAndIV(PokemonObj, Pokemon);
+                PokemonObj = MoveIVProcess(PokemonObj, Pokemon);
                 ipc.of.Controller.emit('PokemonData', PokemonObj);
                 ipc.of.Controller.emit('WorkerDone', worker);
               } else {
@@ -86,7 +86,7 @@ function scanPokemon(spawn, worker) {
 function getPokemonObj(Pokemon, workerScannedSpawnPointID, serverTimestamp, callback){ //convert to pokemon object
   let PokemonID;
   if (Pokemon.pokemon_data != null) {
-    PokemonID = Pokemon.pokemon_data.pokemon_id; 
+    PokemonID = Pokemon.pokemon_data.pokemon_id;
   } else {
     PokemonID = Pokemon.pokemon_id
   }
@@ -94,7 +94,7 @@ function getPokemonObj(Pokemon, workerScannedSpawnPointID, serverTimestamp, call
     id: PokemonID,
     spawnLat: Pokemon.latitude,
     spawnLong: Pokemon.longitude,
-    TTH_ms: Pokemon.time_till_hidden_ms, 
+    TTH_ms: Pokemon.time_till_hidden_ms,
     despawnTime: Pokemon.expiration_timestamp_ms,
     spawn_point_id: Pokemon.spawn_point_id,
     encounter_id: Pokemon.encounter_id,
@@ -103,13 +103,12 @@ function getPokemonObj(Pokemon, workerScannedSpawnPointID, serverTimestamp, call
   })
 }
 
-function getMoveAndIV (PokemonObj, Pokemon) {
+function MoveIVProcess (PokemonObj, Pokemon) {
   PokemonObj.Atk = Pokemon.individual_attack;
   PokemonObj.Def = Pokemon.individual_defense;
   PokemonObj.Stam = Pokemon.individual_stamina;
-  PokemonObj.iv = lib.Utils.getIVsFromPokemon(Pokemon, 2).percent;
-  PokemonObj.move_1 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_1);
-  PokemonObj.move_2 = lib.Utils.getEnumKeyByValue(proto.Enums.PokemonMove,Pokemon.move_2);  
+  PokemonObj.move_1 = Pokemon.move_1;
+  PokemonObj.move_2 = Pokemon.move_2;
   return PokemonObj;
 }
 
