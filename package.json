@@ -1,7 +1,7 @@
 {
-  "name": "node-pogo-scanner",
+  "name": "node-pogo-scanner-cdlm",
   "version": "0.6.0",
-  "description": "Pokemon Go Scanner version 6, that distributes spawns to workers one by one.",
+  "description": "Condulum's Pokemon Go Scanner version 6, that distributes spawns to workers one by one.",
   "main": "app.js",
   "scripts": {
     "start": "node app.js"

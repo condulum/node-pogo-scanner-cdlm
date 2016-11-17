@@ -6,6 +6,7 @@ moment.locale('hk');
 //removed: bluebird, lodash
 
 //IMPORTANT: GET A PROPER LOGGER.
+const winston = require('winston');
 
 const request = require('then-request');
 const protobuf = require('protobuf');
